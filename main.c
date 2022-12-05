@@ -7,6 +7,9 @@
 #define WIDTH 80
 #define HEIGHT 43
 
+static const int n_vertices;
+static float focal_dist;
+
 typedef struct
 {
     float x, y, z;
@@ -22,8 +25,6 @@ typedef struct
     char c;
     Vector3D vertices[1600];
 } Face;
-
-static float focal_dist;
 
 Point project_vector(Vector3D world_point)
 {
@@ -59,29 +60,32 @@ void dump(char buffer[HEIGHT][WIDTH])
 
 int main(void)
 {
-    Face front, back, top, bottom, left, right;
+    short edge_length = 20;
+    float spacing = 0.5;
 
+    // construct each face of the cube
+    Face front, back, top, bottom, left, right;
     size_t c = 0;
-    for (float i = -10; i < 10; i += 0.5)
+    for (float i = 0; i < edge_length; i += spacing)
     {
-        for (float j = -10; j < 10; j += 0.5)
+        for (float j = 0; j < edge_length; j += spacing)
         {
-            Vector3D v_front = {.x = i, .y = j, .z = 10};
+            Vector3D v_front = {.x = i, .y = j, .z = edge_length};
             front.vertices[c] = v_front;
 
-            Vector3D v_back = {.x = i, .y = j, .z = -10};
+            Vector3D v_back = {.x = i, .y = j, .z = 0};
             back.vertices[c] = v_back;
 
-            Vector3D v_top = {.x = i, .y = 10, .z = j};
+            Vector3D v_top = {.x = i, .y = edge_length, .z = j};
             top.vertices[c] = v_top;
 
-            Vector3D v_bottom = {.x = i, .y = -10, .z = j};
+            Vector3D v_bottom = {.x = i, .y = 0, .z = j};
             bottom.vertices[c] = v_bottom;
 
-            Vector3D v_left = {.x = -10, .y = i, .z = j};
+            Vector3D v_left = {.x = 0, .y = i, .z = j};
             left.vertices[c] = v_left;
 
-            Vector3D v_right = {.x = 10, .y = i, .z = j};
+            Vector3D v_right = {.x = edge_length, .y = i, .z = j};
             right.vertices[c] = v_right;
 
             c++;
@@ -94,36 +98,45 @@ int main(void)
     left.c = ';';
     right.c = '+';
 
-    const int n_faces = 6;
-    Face faces[n_faces] = {front, back, top, bottom, left, right};
+    Face faces[6] = {front, back, top, bottom, left, right};
+
+    Vector3D offset = {.x = -edge_length / 2, .y = -edge_length / 2, .z = -edge_length / 2};
+
+    for (size_t i = 0; i < 6; i++)
+    {
+        Vector3D *vertices = faces[i].vertices;
+        for (size_t j = 0; j < 1600; j++)
+        {
+            vector_add(vertices[j], offset, &(vertices[j]));
+        }
+    }
 
     char buffer[HEIGHT][WIDTH];
     float z_buffer[HEIGHT][WIDTH];
 
-    float alpha = 0;
+    Vector3D z_offset = {.x = 0, .y = 0, .z = -35};
+
+    float rot_angle = 0;
     focal_dist = tan(0.5 * 90 * M_PI / 180);
-    Vector3D offset = {.x = 0, .y = 0, .z = -45};
-    float cosa, sina, x, y, z;
 
     while (true)
     {
-        memset(buffer, '.', sizeof buffer);
+        memset(buffer, ' ', sizeof buffer);
         memset(z_buffer, -10000, sizeof z_buffer);
 
-        cosa = cos(alpha),
-        sina = sin(alpha);
+        float cosa = cos(rot_angle), sina = sin(rot_angle);
 
-        for (size_t i = 0; i < n_faces; i++)
+        for (size_t i = 0; i < 6; i++)
         {
             Face face = faces[i];
             for (size_t j = 0; j < c; j++)
             {
-                x = face.vertices[j].x, y = face.vertices[j].y, z = face.vertices[j].z;
+                float x = face.vertices[j].x, y = face.vertices[j].y, z = face.vertices[j].z;
                 Vector3D vertex_trans = {
                     .x = x * cosa - y * sina * cosa + z * sina * sina,
                     .y = x * sina + y * cosa * cosa - z * cosa * sina,
                     .z = y * sina + z * cosa};
-                vector_add(vertex_trans, offset, &vertex_trans);
+                vector_add(vertex_trans, z_offset, &vertex_trans);
                 Point point = project_vector(vertex_trans);
                 if (vertex_trans.z > z_buffer[point.y][point.x])
                 {
@@ -133,9 +146,11 @@ int main(void)
             }
         }
 
+        // clear screen and display buffer contents
         printf("\x1b[H\x1b[J");
         dump(buffer);
-        alpha += 2 * M_PI / 360;
+
+        rot_angle += 2 * M_PI / 360;
         usleep(15000);
     }
 
