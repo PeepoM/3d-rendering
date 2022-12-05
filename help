@@ -1,0 +1,186 @@
+using MathNet.Numerics.LinearAlgebra;
+
+namespace Renderer3D
+{
+    internal class Renderer3D : Form
+    {
+        private const int ScreenWidth = 800;
+        private const int ScreenHeight = 600;
+        private const double Theta = 90;
+
+        private readonly double _focalDistance;
+        private readonly WavefrontObject _wavefrontObject;
+        private readonly Vector3D<double> _light;
+
+        private double _alpha;
+        private bool _running;
+
+        private Renderer3D()
+        {
+            Size = new Size(ScreenWidth, ScreenHeight);
+            DoubleBuffered = true;
+
+            KeyPreview = true;
+            KeyDown += OnKeyDown;
+            KeyUp += OnKeyUp;
+            FormClosing += OnFormClosing;
+
+            const string cubePath = @"D:\Programovanie\Csharp\Renderer3D\trumpet.obj";
+            _wavefrontObject = WavefrontParser.ParseObjectFile(cubePath);
+            _wavefrontObject.Vertices = _wavefrontObject.Vertices.Select(v => v - _wavefrontObject.Midpoint).ToList();
+
+            _alpha = 0;
+            _focalDistance = Math.Tan(0.5 * Theta * Math.PI / 180);
+            _running = true;
+            _light = Vector3D<double>.Build.DenseOfArray(new double[] { 0, 0, -1 }).Normalize(2);
+
+            Task.Run(async () => { await Loop(); });
+        }
+
+        private async Task Loop()
+        {
+            while (_running)
+            {
+                _alpha *= Math.PI / 180;
+
+                var zRotation = Matrix<double>.Build.DenseOfArray(new[,]
+                {
+                    { Math.Cos(_alpha), -Math.Sin(_alpha), 0 },
+                    { Math.Sin(_alpha), Math.Cos(_alpha), 0 },
+                    { 0, 0, 1 },
+                });
+                var xRotation = Matrix<double>.Build.DenseOfArray(new[,]
+                {
+                    { 1, 0, 0 },
+                    { 0, Math.Cos(_alpha), -Math.Sin(_alpha) },
+                    { 0, Math.Sin(_alpha), Math.Cos(_alpha) },
+                });
+
+                var offset = Vector3D<double>.Build.DenseOfArray(new double[] { 0, 0, -600 });
+                _wavefrontObject.VerticesTranslated = _wavefrontObject.Vertices.
+                    Select(p => xRotation.Multiply(zRotation).Multiply(p) + offset).
+                    ToList();
+                _wavefrontObject.VerticesProjected = _wavefrontObject.VerticesTranslated.
+                    Select(Projection).
+                    ToList();
+
+                Refresh();
+
+                _alpha = (_alpha * 180 / Math.PI + 1) % 360;
+
+                await Task.Delay(15);
+            }
+        }
+
+        private bool IsViewable(Point point)
+        {
+            return point.X is >= 0 and <= ScreenWidth && point.Y is >= 0 and <= ScreenHeight;
+        }
+
+        private Point Projection(Vector3D<double> worldPoint)
+        {
+            var projected = Vector3D<double>.Build.DenseOfArray(new[]
+            {
+                worldPoint[0] / (worldPoint[2] * _focalDistance),
+                worldPoint[1] / (worldPoint[2] * _focalDistance)
+            });
+
+            var canvasPoint = new Point
+            {
+                X = (int)((-projected[0] + 1) / 2 * ScreenWidth),
+                Y = (int)((projected[1] + 1) / 2 * ScreenHeight)
+            };
+
+            return canvasPoint;
+        }
+
+        private void OnKeyUp(object? sender, KeyEventArgs e)
+        {
+            if (e.KeyCode == Keys.W)
+                _wavefrontObject.Direction[2] = 0;
+            else if (e.KeyCode == Keys.S)
+                _wavefrontObject.Direction[2] = 0;
+            if (e.KeyCode == Keys.D)
+                _wavefrontObject.Direction[0] = 0;
+            else if (e.KeyCode == Keys.A)
+                _wavefrontObject.Direction[0] = 0;
+        }
+
+        private void OnKeyDown(object? sender, KeyEventArgs e)
+        {
+            if (e.KeyCode == Keys.W)
+                _wavefrontObject.Direction[2] = 1;
+            else if (e.KeyCode == Keys.S)
+                _wavefrontObject.Direction[2] = -1;
+            if (e.KeyCode == Keys.D)
+                _wavefrontObject.Direction[0] = 1;
+            else if (e.KeyCode == Keys.A)
+                _wavefrontObject.Direction[0] = -1;
+        }
+
+        private void OnFormClosing(object? sender, FormClosingEventArgs e)
+        {
+            _running = false;
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            base.OnPaint(e);
+
+            var g = e.Graphics;
+            g.Clear(Color.Black);
+
+            var pen = new Pen(Color.White);
+            var brushColor = Color.Gray;
+            var brush = new SolidBrush(brushColor);
+
+            // painter's algorithm
+            var faces = new List<(IList<int>, double)>();
+            foreach (var face in _wavefrontObject.Faces)
+            {
+                var midpoint = face.Select(f => _wavefrontObject.VerticesTranslated[f][2]).Average();
+                faces.Add((face, midpoint));
+            }
+            faces.Sort((f1, f2) => f1.Item2.CompareTo(f2.Item2));
+
+            foreach (var (face, _) in faces)
+            {
+                var v1 = _wavefrontObject.VerticesTranslated[face[0]];
+                var v2 = _wavefrontObject.VerticesTranslated[face[1]];
+                var v3 = _wavefrontObject.VerticesTranslated[face[2]];
+                var normal = CrossProduct(v2 - v1, v3 - v1).Normalize(2);
+                var dot = normal.DotProduct(v1.Normalize(2));
+
+                if (dot < 0)
+                {
+                    var polygonPoints = face.
+                        Select(f => _wavefrontObject.VerticesProjected[f]).
+                        ToArray();
+                    var luminance = Math.Abs(normal.DotProduct(_light));
+                    brush.Color = Color.FromArgb(
+                        brushColor.A,
+                        (int)(brushColor.R * luminance),
+                        (int)(brushColor.G * luminance),
+                        (int)(brushColor.B * luminance));
+                    g.FillPolygon(brush, polygonPoints);
+                }
+            }
+        }
+
+        private Vector3D<double> CrossProduct(Vector3D<double> v1, Vector3D<double> v2)
+        {
+            return Vector3D<double>.Build.DenseOfArray(new double[]
+            {
+                v1[1] * v2[2] - v2[1] * v1[2],
+                v1[2] * v2[0] - v2[2] * v1[0],
+                v1[0] * v2[1] - v2[0] * v1[1]
+            });
+        }
+
+        public static void Main()
+        {
+            var renderer = new Renderer3D();
+            Application.Run(renderer);
+        }
+    }
+}
