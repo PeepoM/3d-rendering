@@ -10,66 +10,55 @@
 static const int n_vertices;
 static float focal_dist;
 
-typedef struct
-{
+typedef struct {
     float x, y, z;
 } Vector3D;
 
-typedef struct
-{
+typedef struct {
     int x, y;
 } Point;
 
-typedef struct
-{
+typedef struct {
     char c;
     Vector3D vertices[1600];
 } Face;
 
-Point project_vector(Vector3D world_point)
-{
+Point project_vector(Vector3D world_point) {
     Vector3D projected = {
-        .x = world_point.x / (world_point.z * focal_dist),
-        .y = world_point.y / (world_point.z * focal_dist)};
+            .x = world_point.x / (world_point.z * focal_dist),
+            .y = world_point.y / (world_point.z * focal_dist)};
 
     Point canvas_point = {
-        .x = (int)((-projected.x + 1) / 2 * WIDTH),
-        .y = (int)((projected.y + 1) / 2 * HEIGHT)};
+            .x = (int) ((-projected.x + 1) / 2 * WIDTH),
+            .y = (int) ((projected.y + 1) / 2 * HEIGHT)};
 
     return canvas_point;
 }
 
-void vector_add(Vector3D a, Vector3D b, Vector3D *result)
-{
+void vector_add(Vector3D a, Vector3D b, Vector3D *result) {
     result->x = a.x + b.x;
     result->y = a.y + b.y;
     result->z = a.z + b.z;
 }
 
-void dump(char buffer[HEIGHT][WIDTH])
-{
-    for (size_t i = 0; i < HEIGHT; i++)
-    {
-        for (size_t j = 0; j < WIDTH; j++)
-        {
+void dump(char buffer[HEIGHT][WIDTH]) {
+    for (size_t i = 0; i < HEIGHT; i++) {
+        for (size_t j = 0; j < WIDTH; j++) {
             putchar(buffer[i][j]);
         }
         putchar('\n');
     }
 }
 
-int main(void)
-{
-    short edge_length = 20;
-    float spacing = 0.5;
+int main(void) {
+    float edge_length = 20, spacing = 0.5f;
+    unsigned int num_vertices = (int) powf(edge_length / spacing, 2);
 
     // construct each face of the cube
     Face front, back, top, bottom, left, right;
     size_t c = 0;
-    for (float i = 0; i < edge_length; i += spacing)
-    {
-        for (float j = 0; j < edge_length; j += spacing)
-        {
+    for (float i = 0; i < edge_length; i += spacing) {
+        for (float j = 0; j < edge_length; j += spacing) {
             Vector3D v_front = {.x = i, .y = j, .z = edge_length};
             front.vertices[c] = v_front;
 
@@ -99,14 +88,10 @@ int main(void)
     right.c = '+';
 
     Face faces[6] = {front, back, top, bottom, left, right};
-
     Vector3D offset = {.x = -edge_length / 2, .y = -edge_length / 2, .z = -edge_length / 2};
-
-    for (size_t i = 0; i < 6; i++)
-    {
+    for (size_t i = 0; i < 6; i++) {
         Vector3D *vertices = faces[i].vertices;
-        for (size_t j = 0; j < 1600; j++)
-        {
+        for (size_t j = 0; j < num_vertices; j++) {
             vector_add(vertices[j], offset, &(vertices[j]));
         }
     }
@@ -117,29 +102,25 @@ int main(void)
     Vector3D z_offset = {.x = 0, .y = 0, .z = -35};
 
     float rot_angle = 0;
-    focal_dist = tan(0.5 * 90 * M_PI / 180);
+    focal_dist = tanf(0.5 * 90 * M_PI / 180);
 
-    while (true)
-    {
-        memset(buffer, ' ', sizeof buffer);
+    while (true) {
+        memset(buffer, '.', sizeof buffer);
         memset(z_buffer, -10000, sizeof z_buffer);
 
-        float cosa = cos(rot_angle), sina = sin(rot_angle);
+        float cosa = cosf(rot_angle), sina = sinf(rot_angle);
 
-        for (size_t i = 0; i < 6; i++)
-        {
+        for (size_t i = 0; i < 6; i++) {
             Face face = faces[i];
-            for (size_t j = 0; j < c; j++)
-            {
+            for (size_t j = 0; j < c; j++) {
                 float x = face.vertices[j].x, y = face.vertices[j].y, z = face.vertices[j].z;
                 Vector3D vertex_trans = {
-                    .x = x * cosa - y * sina * cosa + z * sina * sina,
-                    .y = x * sina + y * cosa * cosa - z * cosa * sina,
-                    .z = y * sina + z * cosa};
+                        .x = x * cosa - y * sina * cosa + z * sina * sina,
+                        .y = x * sina + y * cosa * cosa - z * cosa * sina,
+                        .z = y * sina + z * cosa};
                 vector_add(vertex_trans, z_offset, &vertex_trans);
                 Point point = project_vector(vertex_trans);
-                if (vertex_trans.z > z_buffer[point.y][point.x])
-                {
+                if (vertex_trans.z > z_buffer[point.y][point.x]) {
                     z_buffer[point.y][point.x] = vertex_trans.z;
                     buffer[point.y][point.x] = face.c;
                 }
