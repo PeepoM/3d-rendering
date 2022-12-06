@@ -3,6 +3,8 @@
 #include <stdbool.h>
 #include <unistd.h>
 #include <string.h>
+#include <time.h>
+#include <errno.h>
 
 #define WIDTH 80
 #define HEIGHT 43
@@ -51,6 +53,25 @@ void transform(Vector3D *vector, float rot_angle, const Vector3D *z_offset) {
     vector_add(vector, z_offset, vector);
 }
 
+int msleep(long msec) {
+    struct timespec ts;
+    int res;
+
+    if (msec < 0) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    ts.tv_sec = msec / 1000;
+    ts.tv_nsec = (msec % 1000) * 1000000;
+
+    do {
+        res = nanosleep(&ts, &ts);
+    } while (res && errno == EINTR);
+
+    return res;
+}
+
 int main(void) {
     char buffer[HEIGHT][WIDTH];
     float z_buffer[HEIGHT][WIDTH];
@@ -90,8 +111,8 @@ int main(void) {
         printf("\x1b[H\x1b[J");
         dump(buffer);
 
-        rot_angle += 2 * M_PI / 360;
-        usleep(15000);
+        rot_angle += 2 * M_PI / 180;
+        msleep(15);
     }
 
     return 0;
